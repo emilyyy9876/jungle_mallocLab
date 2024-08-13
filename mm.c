@@ -111,7 +111,7 @@ static void *extend_heap(size_t words)
     PUT(FTR_P(bp), PACK(size, 0));
     PUT(HDR_P(EXT_BLK_P(bp)), PACK(0, 1));
 
-    /*만약 이전 블록이 가용상태*/
+    /*힙 extend 후, 만약 이전 블록이 free 상태라면, 이전블록과 연결하기*/
     return (coalesce(bp));
 }
 
@@ -137,6 +137,49 @@ void *mm_malloc(size_t size)
  */
 void mm_free(void *ptr)
 {
+}
+
+static void *coalesce(void *bp)
+{
+    /*prev, next block의 allocation 상태를 나타내는 변수(0/1) */
+    size_t prev_alloc = GET_ALLOC(FTR_P(PREV_BLK_P(bp)));
+    size_t next_alloc = GET_ALLOC(HDR_P(NEXT_BLK_P(bp)));
+
+    size_t size = GET_SIZE(HDRP(bp));
+
+    /*case1 _ prev & next block이 모두 allocated 상태*/
+    if (prev_alloc && next_alloc)
+    {
+        return bp;
+    }
+
+    /*case2 _ next block만 free 상태*/
+    else if (prev_alloc && !next_alloc)
+    {
+        size += GET_SIZE(HDR_P(NEXT_BLK_P(bp))); // 새로운 사이즈
+        PUT(HDR_P(bp), PACK(size, 0));           // 현재 블록의 header, footer 갱신
+        PUT(FTR_P(bp), PACK(size, 0));
+    }
+    /*case3 _ prev block만 free 상태*/
+    else if (!prev_alloc && next_alloc)
+    {
+        size += GET_SIZE(HDR_P(PREV_BLK_P(bp)));
+        PUT(HDR_P(PREV_BLK_P(bp)), PACK(size, 0));
+        PUT(FTR_P(bp), PACK(size, 0));
+
+        bp = PREV_BLK_P(bp); // bp주소를 prev block의 bp주소로 설정
+    }
+    /*case4 _ prev & next 모두 free 상태*/
+    else
+    {
+        size = size + GET_SIZE(FTR_P(NEXT_BLK_P(bp))) + GET_SIZE(HDR_P(PREV_BLK_P(bp)));
+        PUT(HDR_P(PREV_BLK_P(bp)), PACK(size, 0));
+        PUT(FTR_P(NEXT_BLK_P(bp)), PACK(size, 0));
+
+        bp = PREV_BLK_P(bp); // bp주소를 prev block의 bp주소로 설정
+    }
+
+    return bp;
 }
 
 /*
