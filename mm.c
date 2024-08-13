@@ -121,15 +121,41 @@ static void *extend_heap(size_t words)
  */
 void *mm_malloc(size_t size)
 {
-    int newsize = ALIGN(size + SIZE_T_SIZE);
-    void *p = mem_sbrk(newsize);
-    if (p == (void *)-1)
+    // int newsize = ALIGN(size + SIZE_T_SIZE);
+    // void *p = mem_sbrk(newsize);
+    // if (p == (void *)-1)
+    //     return NULL;
+    // else
+    // {
+    //     *(size_t *)p = size;
+    //     return (void *)((char *)p + SIZE_T_SIZE);
+    // }
+
+    size_t asize;      /*조정된 블록의 사이즈인, 변수 asize */
+    size_t extendsize; /*만약 할당할 만큼의 충분히 큰 블록을 찾지 못했을 때, heap 추가 확장할 크기*/
+    char *ptr;
+
+    if (size == 0)
         return NULL;
+
+    /*size 크기에 따라, asize 값(할당 요청 크기, header&footer 크기도 포함되어야 함) 설정*/
+    if (size <= DW_SIZE)
+        asize = 2 * DW_SIZE;
     else
+        asize = ALIGN(size + ALIGNMENT);
+
+    /*free list를 검색해서, asize 크기에 맞는 가용블록 찾기*/
+    if ((ptr = find_fit(asize)) != NULL)
     {
-        *(size_t *)p = size;
-        return (void *)((char *)p + SIZE_T_SIZE);
+        place(ptr, asize);
+        return ptr;
     }
+    /*탐색 후, 맞는 블록 없을 때, heap 확장하기*/
+    extendsize = MAX(asize, CHUNK_SIZE); /*asize, chunk_size 중 큰 값을 추가 확장값으로 결정*/
+    if ((ptr = extend_heap(extendsize / W_SIZE)) == NULL)
+        return NULL;
+    place(ptr, asize);
+    return ptr;
 }
 
 /*
