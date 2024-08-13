@@ -47,16 +47,16 @@ team_t team = {
 #define DW_SIZE 8            // double word의 사이즈(bytes)
 #define CHUNK_SIZE (1 << 12) // 초기 heap 확장 사이즈(bytes)
 
-#define MAX(x, y) (x > y ? x : y)
+#define MAX(x, y) ((x) > (y) ? (x) : (y))
 
 // 비트 연산을 이용한 데이터의 저장과 추출
 
 // size, allocated라는 두 인자를 받아들이고, 비트(OR('|'))연산으로 결합하여 하나의 값으로 만드는 것
-#define PACK(size, alloc) ((size | alloc))
+#define PACK(size, alloc) ((size) | (alloc))
 
 // 주소 p에 있는, 한 word를 읽거나. 한 word에 쓰기
-#define GET(p) (*(unsigned int *)p)
-#define PUT(p, val) (*(unsigned int *)p = val)
+#define GET(p) (*(unsigned int *)(p))
+#define PUT(p, val) (*(unsigned int *)(p) = (val))
 
 // 주소 p에서의 size와 allocated 필드를 읽기
 
@@ -76,7 +76,43 @@ team_t team = {
  */
 int mm_init(void)
 {
+
+    // 초기의 빈 heap 생성하기
+
+    /*header의 구조 설정*/
+    static char *heap_list_p;
+    if ((heap_list_p = mem_sbrk(4 * W_SIZE)) == (void *)-1)
+        return -1;
+    PUT(heap_list_p, 0);
+    PUT(heap_list_p + (2 * W_SIZE), 1);
+    PUT(heap_list_p + (1 * W_SIZE), PACK(DW_SIZE, 1));
+    PUT(heap_list_p + (2 * W_SIZE), PACK(DW_SIZE, 1));
+
+    heap_list_p += (2 * W_SIZE); //*heap_list_p는 항상 프롤로그 블록을 가리킴
+
+    /*빈 heap을 chunksize 만큼 확장 */
+    if (extend_heap(CHUNK_SIZE / W_SIZE) == NULL) // chunk_size를 메모리에서 가져오는데 실패->heap확장불가
+        return -1;
     return 0;
+}
+
+static void *extend_heap(size_t words)
+{
+    char *bp;
+    size_t size;
+
+    /*double word 정렬을 유지하기 위해 짝수 word를 할당하기*/
+    size = (words % 2) ? (words + 1) * W_SIZE : words * W_SIZE; // 나머지 결과(0/1)에 따라 size 값 다르게 설정
+    if ((long)(bp = mem_sbrk(size)) == -1)                      // memory sytem에서 size만큼 가져오는데 실패한경우
+        return NULL;
+
+    /*현재 bp가 가리키고 있는 가용 block의 header/footer 그리고 epilogue header를 초기화*/
+    PUT(HDR_P(bp), PACK(size, 0));
+    PUT(FTR_P(bp), PACK(size, 0));
+    PUT(HDR_P(EXT_BLK_P(bp)), PACK(0, 1));
+
+    /*만약 이전 블록이 가용상태*/
+    return (coalesce(bp));
 }
 
 /*
