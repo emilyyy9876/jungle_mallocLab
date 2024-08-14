@@ -71,6 +71,8 @@ team_t team = {
 #define NEXT_BLK_P(ptr) ((char *)(ptr) + GET_SIZE(((char *)(ptr) - W_SIZE)))  // ptr+(현재 block의 size)
 #define PREV_BLK_P(ptr) ((char *)(ptr) - GET_SIZE(((char *)(ptr) - DW_SIZE))) // ptr-(이전 block의 size)
 
+static char *heap_list_p;
+
 /*
  * mm_init - initialize the malloc package.
  */
@@ -80,7 +82,6 @@ int mm_init(void)
     // 초기의 빈 heap 생성하기
 
     /*header의 구조 설정*/
-    static char *heap_list_p;
     if ((heap_list_p = mem_sbrk(4 * W_SIZE)) == (void *)-1)
         return -1;
     PUT(heap_list_p, 0);
@@ -115,6 +116,51 @@ static void *extend_heap(size_t words)
     return (coalesce(ptr));
 }
 
+/* first_fit 구현 */
+static void *find_fit(size_t asize)
+{
+    void *ptr;
+    for (ptr = heap_list_p; GET_SIZE(HDR_P(ptr)); ptr = NEXT_BLK_P(ptr))
+    {
+        if (!GET_ALLOC(HDRP(ptr)) && (asize <= GET_SIZE(HDRP(ptr))))
+        {
+            return ptr;
+        }
+    }
+    return NULL;
+}
+
+/* next_fit 구현 */
+static void *find_fit_n(size_t asize)
+{
+}
+
+/* best_fit 구현 */
+static void *find_fit_b(size_t asize)
+{
+}
+
+/*place 구현*/
+static void place(void *ptr, size_t asize)
+{
+    size_t csize = GET_SIZE(HDRP(ptr));
+
+    if ((csize - asize) >= (2 * DW_SIZE))
+    {
+        PUT(HDRP(ptr), PACK(asize, 1));
+        PUT(FTRP(ptr), PACK(asize, 1));
+
+        ptr = NEXT_BLKP(ptr);
+
+        PUT(HDRP(ptr), PACK(csize - asize, 0));
+        PUT(FTRP(ptr), PACK(csize - asize, 0));
+    }
+    else
+    {
+        PUT(HDRP(ptr), PACK(csize, 1));
+        PUT(FTRP(ptr), PACK(csize, 1));
+    }
+}
 /*
  * mm_malloc - Allocate a block by incrementing the brk pointer.
  *     Always allocate a block whose size is a multiple of the alignment.
