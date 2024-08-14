@@ -24,11 +24,11 @@
  ********************************************************/
 team_t team = {
     /* Team name */
-    "ateam",
+    "team 4",
     /* First member's full name */
-    "Harry Bovik",
+    "Emily Kang",
     /* First member's email address */
-    "bovik@cs.cmu.edu",
+    "strongwomankky@gmail.com",
     /* Second member's full name (leave blank if none) */
     "",
     /* Second member's email address (leave blank if none) */
@@ -64,14 +64,18 @@ team_t team = {
 #define GET_ALLOC(p) (GET(p) & 0x1)
 
 // block pointer인 ptr가 주어졌을 때, 해당 block의 header와 footer의 주소를 계산하기
-#define HDR_P(ptr) ((char *)(ptr) - W_SIZE)                        // ptr-(1word)
-#define FTR_P(ptr) ((char *)(ptr) + GET_SIZE(HDRP(ptr)) - DW_SIZE) // ptr+ (block size)
+#define HDR_P(ptr) ((char *)(ptr) - W_SIZE)                         // ptr-(1word)
+#define FTR_P(ptr) ((char *)(ptr) + GET_SIZE(HDR_P(ptr)) - DW_SIZE) // ptr+ (block size)
 
 // block pointer인 ptr가 주어졌을 때, 해당 block의 이전, 다음 block 주소를 계산하기
 #define NEXT_BLK_P(ptr) ((char *)(ptr) + GET_SIZE(((char *)(ptr) - W_SIZE)))  // ptr+(현재 block의 size)
 #define PREV_BLK_P(ptr) ((char *)(ptr) - GET_SIZE(((char *)(ptr) - DW_SIZE))) // ptr-(이전 block의 size)
 
 static char *heap_list_p;
+static void *extend_heap(size_t words);
+static void *find_fit(size_t asize);
+static void place(void *ptr, size_t asize);
+static void *coalesce(void *ptr);
 
 /*
  * mm_init - initialize the malloc package.
@@ -110,7 +114,7 @@ static void *extend_heap(size_t words)
     /*현재 ptr가 가리키고 있는 가용 block의 header/footer 그리고 epilogue header를 초기화*/
     PUT(HDR_P(ptr), PACK(size, 0));
     PUT(FTR_P(ptr), PACK(size, 0));
-    PUT(HDR_P(EXT_BLK_P(ptr)), PACK(0, 1));
+    PUT(HDR_P(NEXT_BLK_P(ptr)), PACK(0, 1));
 
     /*힙 extend 후, 만약 이전 블록이 free 상태라면, 이전블록과 연결하기*/
     return (coalesce(ptr));
@@ -122,7 +126,7 @@ static void *find_fit(size_t asize)
     void *ptr;
     for (ptr = heap_list_p; GET_SIZE(HDR_P(ptr)); ptr = NEXT_BLK_P(ptr))
     {
-        if (!GET_ALLOC(HDRP(ptr)) && (asize <= GET_SIZE(HDRP(ptr))))
+        if (!GET_ALLOC(HDR_P(ptr)) && (asize <= GET_SIZE(HDR_P(ptr))))
         {
             return ptr;
         }
@@ -130,35 +134,25 @@ static void *find_fit(size_t asize)
     return NULL;
 }
 
-/* next_fit 구현 */
-static void *find_fit_n(size_t asize)
-{
-}
-
-/* best_fit 구현 */
-static void *find_fit_b(size_t asize)
-{
-}
-
 /*place 구현*/
 static void place(void *ptr, size_t asize)
 {
-    size_t csize = GET_SIZE(HDRP(ptr));
+    size_t csize = GET_SIZE(HDR_P(ptr));
 
     if ((csize - asize) >= (2 * DW_SIZE))
     {
-        PUT(HDRP(ptr), PACK(asize, 1));
-        PUT(FTRP(ptr), PACK(asize, 1));
+        PUT(HDR_P(ptr), PACK(asize, 1));
+        PUT(FTR_P(ptr), PACK(asize, 1));
 
-        ptr = NEXT_BLKP(ptr);
+        ptr = NEXT_BLK_P(ptr);
 
-        PUT(HDRP(ptr), PACK(csize - asize, 0));
-        PUT(FTRP(ptr), PACK(csize - asize, 0));
+        PUT(HDR_P(ptr), PACK(csize - asize, 0));
+        PUT(FTR_P(ptr), PACK(csize - asize, 0));
     }
     else
     {
-        PUT(HDRP(ptr), PACK(csize, 1));
-        PUT(FTRP(ptr), PACK(csize, 1));
+        PUT(HDR_P(ptr), PACK(csize, 1));
+        PUT(FTR_P(ptr), PACK(csize, 1));
     }
 }
 /*
@@ -223,7 +217,7 @@ static void *coalesce(void *ptr)
     size_t prev_alloc = GET_ALLOC(FTR_P(PREV_BLK_P(ptr)));
     size_t next_alloc = GET_ALLOC(HDR_P(NEXT_BLK_P(ptr)));
 
-    size_t size = GET_SIZE(HDRP(ptr));
+    size_t size = GET_SIZE(HDR_P(ptr));
 
     /*case1 _ prev & next block이 모두 allocated 상태*/
     if (prev_alloc && next_alloc)
@@ -265,6 +259,16 @@ static void *coalesce(void *ptr)
  */
 void *mm_realloc(void *ptr, size_t size)
 {
+    if (ptr == NULL)
+    {
+        return mm_malloc(size);
+    }
+    if (size <= 0)
+    {
+        mm_free(ptr);
+        return NULL;
+    }
+    // ptr
     void *oldptr = ptr;
     void *newptr;
     size_t copySize;
@@ -272,7 +276,7 @@ void *mm_realloc(void *ptr, size_t size)
     newptr = mm_malloc(size);
     if (newptr == NULL)
         return NULL;
-    copySize = *(size_t *)((char *)oldptr - SIZE_T_SIZE);
+    copySize = GET_SIZE(HDR_P(oldptr));
     if (size < copySize)
         copySize = size;
     memcpy(newptr, oldptr, copySize);
