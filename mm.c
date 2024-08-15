@@ -72,6 +72,7 @@ team_t team = {
 #define PREV_BLK_P(ptr) ((char *)(ptr) - GET_SIZE(((char *)(ptr) - DW_SIZE))) // ptr-(이전 block의 size)
 
 static char *heap_list_p;
+static char *srch_ptr;
 static void *extend_heap(size_t words);
 static void *find_fit(size_t asize);
 static void place(void *ptr, size_t asize);
@@ -94,7 +95,7 @@ int mm_init(void)
     PUT(heap_list_p + (2 * W_SIZE), PACK(DW_SIZE, 1));
 
     heap_list_p += (2 * W_SIZE); //*heap_list_p는 항상 프롤로그 블록을 가리킴
-
+    srch_ptr = heap_list_p;
     /*빈 heap을 chunksize 만큼 확장 */
     if (extend_heap(CHUNK_SIZE / W_SIZE) == NULL) // chunk_size를 메모리에서 가져오는데 실패->heap확장불가
         return -1;
@@ -121,13 +122,38 @@ static void *extend_heap(size_t words)
 }
 
 /* first_fit 구현 */
+// static void *find_fit(size_t asize)
+// {
+//     void *ptr;
+//     for (ptr = heap_list_p; GET_SIZE(HDR_P(ptr)); ptr = NEXT_BLK_P(ptr))
+//     {
+//         if (!GET_ALLOC(HDR_P(ptr)) && (asize <= GET_SIZE(HDR_P(ptr))))
+//         {
+//             return ptr;
+//         }
+//     }
+//     return NULL;
+// }
+
+/* next_fit 구현*/
 static void *find_fit(size_t asize)
 {
     void *ptr;
-    for (ptr = heap_list_p; GET_SIZE(HDR_P(ptr)); ptr = NEXT_BLK_P(ptr))
+    // 이전에 search가 끝났던 부분부터 찾기
+    for (ptr = srch_ptr; GET_SIZE(HDR_P(ptr)) > 0; ptr = NEXT_BLK_P(ptr))
     {
         if (!GET_ALLOC(HDR_P(ptr)) && (asize <= GET_SIZE(HDR_P(ptr))))
         {
+            srch_ptr = ptr;
+            return ptr;
+        }
+    }
+    // 만약,fit한 block을 못 찾았을 경우---> heap_list_p부터,
+    for (ptr = heap_list_p; ptr != srch_ptr; ptr = NEXT_BLK_P(ptr))
+    {
+        if (!GET_ALLOC(HDR_P(ptr)) && (asize <= GET_SIZE(HDR_P(ptr))))
+        {
+            srch_ptr = ptr;
             return ptr;
         }
     }
@@ -251,6 +277,11 @@ static void *coalesce(void *ptr)
         ptr = PREV_BLK_P(ptr); // ptr주소를 prev block의 ptr주소로 설정
     }
 
+    // 빈 가용리스트끼리 연결 후, srch_ptr를 갱신해야 하는 경우 처리
+    if (HDR_P(ptr) <= srch_ptr && srch_ptr <= FTR_P(ptr))
+    {
+        srch_ptr = ptr;
+    }
     return ptr;
 }
 
